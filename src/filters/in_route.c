@@ -865,6 +865,15 @@ static GF_Err routein_initialize(GF_Filter *filter)
 			ctx->route_dmx = gf_dvb_mabr_dmx_new(ctx->src+prot_offset, port, ctx->ifce, ctx->buffer, gf_filter_get_netcap_id(filter), routein_on_event, ctx);
 		else
 			ctx->route_dmx = gf_route_dmx_new_ex(ctx->src+prot_offset, port, ctx->ifce, ctx->buffer, gf_filter_get_netcap_id(filter), routein_on_event, ctx);
+
+		if (ctx->route_dmx && ctx->amt_relay) {
+			char group_ip[256];
+			gf_strlcpy(group_ip, ctx->src+prot_offset, sizeof(group_ip));
+			GF_Err amt_err = gf_route_dmx_set_amt_relay(ctx->route_dmx, ctx->amt_relay, 0, group_ip, port, ctx->amt_source);
+			if (amt_err) {
+				GF_LOG(GF_LOG_ERROR, GF_LOG_ROUTE, ("[%s] Failed to open AMT gateway to relay %s: %s\n", ctx->log_name, ctx->amt_relay, gf_error_to_string(amt_err)));
+			}
+		}
 		sep[0] = ':';
 	}
 	if (!ctx->route_dmx) return GF_SERVICE_ERROR;
@@ -1001,6 +1010,8 @@ static const GF_FilterArgs ROUTEInArgs[] =
 		"- depx: same as deps but do not hide moof of incomplete mdat (tests only)", GF_PROP_UINT, "none", "none|simple|partial|deps|depx", 0},
 	{ OFFS(ka), "keep service alive if multicast is down", GF_PROP_BOOL, "false", NULL, GF_FS_ARG_HINT_ADVANCED},
 	{ OFFS(chkiso), "check isobmf structure after repair (debug)", GF_PROP_BOOL, "false", NULL, GF_FS_ARG_HINT_EXPERT},
+	{ OFFS(amt_relay), "AMT relay host (RFC 7450) to use when native multicast is not available on the path, e.g. amt-relay.example.org. When set, multicast traffic is received through an AMT tunnel instead of native multicast sockets. Requires GPAC to be built with AMT support (-DGPAC_HAS_ROUTE_AMT)", GF_PROP_STRING, NULL, NULL, 0},
+	{ OFFS(amt_source), "SSM source address for the AMT join (optional, only used when amt_relay is set)", GF_PROP_STRING, NULL, NULL, GF_FS_ARG_HINT_ADVANCED},
 
 	{0}
 };

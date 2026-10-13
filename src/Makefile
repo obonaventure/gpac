@@ -100,6 +100,11 @@ LIBGPAC_EVG=evg/ftgrays.o evg/raster3d.o evg/raster_565.o evg/raster_argb.o evg/
 ## libgpac objects gathering: src/media tools
 LIBGPAC_MEDIATOOLS=media_tools/isom_tools.o media_tools/dash_segmenter.o media_tools/av_parsers.o media_tools/route_dmx.o media_tools/id3.o
 
+ifeq ($(ENABLE_ROUTE_AMT),yes)
+LIBGPAC_MEDIATOOLS+=../libamt/amt.o
+CFLAGS+=-I$(SRC_PATH)/libamt
+endif
+
 ifeq ($(DISABLE_AV_PARSERS),no)
 LIBGPAC_MEDIATOOLS+=media_tools/img.o
 endif

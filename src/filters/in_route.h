@@ -118,7 +118,7 @@ typedef struct
 typedef struct
 {
 	//options
-	char *src, *ifce, *odir;
+	char *src, *ifce, *odir, *amt_relay, *amt_source;
 	Bool gcache, kc, skipr, reorder, fullseg, cloop, llmode, dynsel, ka, chkiso;
 	u32 buffer, timeout, max_segs, tsidbg, rtimeout, nbcached;
 	s32 stats;

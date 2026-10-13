@@ -243,6 +243,7 @@ push_feature "ttxt" "TTXT (3GPP / MPEG-4 Timed Text) support"
 push_feature "ttml" "TTML/EBU TTD support"
 push_feature "vtt" "WebVTT support"
 push_feature "route" "ROUTE (ATSC3) support"
+push_feature "route-amt" "!AMT (Automatic Multicast Tunneling, RFC 7450) gateway for ROUTE input"
 push_feature "qjs" "QuickJS support"
 push_feature "qjs-libc" "QuickJS libc module support"
 push_feature "tinygl" "!TinyGL support"
@@ -2529,6 +2530,11 @@ if test "$disable_route" = "yes" ; then
     echo "#define GPAC_DISABLE_ROUTE" >> $TMPH
 fi
 
+if test "$disable_route_amt" = "no" ; then
+    echo "ROUTE AMT support enabled"
+    echo "#define GPAC_HAS_ROUTE_AMT" >> $TMPH
+fi
+
 if test "$disable_crypto" = "yes" ; then
     echo "CRYPTO Support disabled"
     echo "#define GPAC_DISABLE_CRYPTO" >> $TMPH
@@ -3093,6 +3099,7 @@ echo "MINIMAL_OD=$disable_od" >> config.mak
 echo "DISABLE_ISOM_ADOBE=$disable_isoff_hds" >> config.mak
 echo "DISABLE_VRML=$disable_vrml" >> config.mak
 echo "DISABLE_ROUTE=$disable_route" >> config.mak
+if test "$disable_route_amt" = "no" ; then echo "ENABLE_ROUTE_AMT=yes" >> config.mak ; else echo "ENABLE_ROUTE_AMT=no" >> config.mak ; fi
 echo "DISABLE_CRYPTO=$disable_crypto" >> config.mak
 echo "DISABLE_M2TS_MUX=$disable_m2ts_mux" >> config.mak
 echo "DISABLE_M2TS=$disable_m2ts" >> config.mak

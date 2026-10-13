@@ -28,6 +28,13 @@
 #if !defined(GPAC_DISABLE_ROUTE)
 
 #include <gpac/network.h>
+#ifdef GPAC_HAS_ROUTE_AMT
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include "../../libamt/amt.h"
+#endif
 #include <gpac/bitstream.h>
 #include <gpac/xml.h>
 #include <gpac/thread.h>
@@ -263,6 +270,10 @@ struct __gf_routedmx {
 	Bool dvb_mabr;
 	Bool start_inactive;
 	u32 nb_active;
+
+#ifdef GPAC_HAS_ROUTE_AMT
+	amt_gateway_t *amt_gw;
+#endif
 };
 
 static GF_Err dmx_process_service_route(GF_ROUTEDmx *routedmx, GF_ROUTEService *s, GF_ROUTESession *route_sess);
@@ -348,6 +359,9 @@ void gf_route_dmx_del(GF_ROUTEDmx *routedmx)
 	if (routedmx->buffer) gf_free(routedmx->buffer);
 	if (routedmx->unz_buffer) gf_free(routedmx->unz_buffer);
 	if (routedmx->atsc_sock) gf_sk_del(routedmx->atsc_sock);
+#ifdef GPAC_HAS_ROUTE_AMT
+	if (routedmx->amt_gw) amt_gateway_close(routedmx->amt_gw);
+#endif
 	if (routedmx->dom) gf_xml_dom_del(routedmx->dom);
 	if (routedmx->blob_mx) gf_mx_del(routedmx->blob_mx);
 	if (routedmx->services) {
@@ -3055,16 +3069,12 @@ static GF_Err gf_route_dmx_process_service_signaling(GF_ROUTEDmx *routedmx, GF_R
 
 #define GF_ROUTE_MAX_SIZE 0x40000000
 
+static GF_Err dmx_process_service_route_lct(GF_ROUTEDmx *routedmx, GF_ROUTEService *s, u32 nb_read);
+
 static GF_Err dmx_process_service_route(GF_ROUTEDmx *routedmx, GF_ROUTEService *s, GF_ROUTESession *route_sess)
 {
 	GF_Err e;
-	u32 nb_read, v, C, psi, S, O, H, /*Res, A,*/ B, hdr_len, cp, cc, tsi, toi, pos;
-	u32 /*a_G=0, a_U=0,*/ a_S=0, a_M=0/*, a_A=0, a_H=0, a_D=0*/;
-	u64 tol_size=0;
-	Bool in_order = GF_TRUE;
-	u32 start_offset;
-	GF_ROUTELCTChannel *rlct=NULL;
-	GF_LCTObject *gather_object=NULL;
+	u32 nb_read;
 
 	if (route_sess) {
 		e = gf_sk_receive_no_select(route_sess->sock, routedmx->buffer, routedmx->buffer_size, &nb_read);
@@ -3074,6 +3084,19 @@ static GF_Err dmx_process_service_route(GF_ROUTEDmx *routedmx, GF_ROUTEService *
 
 	if (e != GF_OK) return e;
 	gf_assert(nb_read);
+	return dmx_process_service_route_lct(routedmx, s, nb_read);
+}
+
+static GF_Err dmx_process_service_route_lct(GF_ROUTEDmx *routedmx, GF_ROUTEService *s, u32 nb_read)
+{
+	GF_Err e;
+	u32 v, C, psi, S, O, H, /*Res, A,*/ B, hdr_len, cp, cc, tsi, toi, pos;
+	u32 /*a_G=0, a_U=0,*/ a_S=0, a_M=0/*, a_A=0, a_H=0, a_D=0*/;
+	u64 tol_size=0;
+	Bool in_order = GF_TRUE;
+	u32 start_offset;
+	GF_ROUTELCTChannel *rlct=NULL;
+	GF_LCTObject *gather_object=NULL;
 
 	routedmx->nb_packets++;
 	routedmx->total_bytes_recv += nb_read;
@@ -3302,17 +3325,12 @@ static GF_Err dmx_process_service_route(GF_ROUTEDmx *routedmx, GF_ROUTEService *
 	return GF_OK;
 }
 
+static GF_Err dmx_process_service_dvb_flute_lct(GF_ROUTEDmx *routedmx, GF_ROUTEService *s, u32 nb_read);
+
 static GF_Err dmx_process_service_dvb_flute(GF_ROUTEDmx *routedmx, GF_ROUTEService *s, GF_ROUTESession *route_sess)
 {
 	GF_Err e;
-	u32 fdt_symbol_length=0;
-	Bool has_ext_fdt = GF_FALSE;
-	u32 nb_read, cp , v, C, psi, S, O, H, /*Res, A,*/ B, hdr_len, tsi, toi, pos;
-	u64 transfert_length=0;
-	u32 start_offset=0;
-	GF_ROUTELCTChannel *rlct=NULL;
-	GF_LCTObject *gather_object=NULL;
-	u32 /*SBN,*/ESI; //Source Block Length  | Encoding Symbol
+	u32 nb_read;
 
 	if (route_sess) {
 		e = gf_sk_receive_no_select(route_sess->sock, routedmx->buffer, routedmx->buffer_size, &nb_read);
@@ -3322,6 +3340,20 @@ static GF_Err dmx_process_service_dvb_flute(GF_ROUTEDmx *routedmx, GF_ROUTEServi
 
 	if (e != GF_OK) return e;
 	gf_assert(nb_read);
+	return dmx_process_service_dvb_flute_lct(routedmx, s, nb_read);
+}
+
+static GF_Err dmx_process_service_dvb_flute_lct(GF_ROUTEDmx *routedmx, GF_ROUTEService *s, u32 nb_read)
+{
+	GF_Err e;
+	u32 fdt_symbol_length=0;
+	Bool has_ext_fdt = GF_FALSE;
+	u32 cp , v, C, psi, S, O, H, /*Res, A,*/ B, hdr_len, tsi, toi, pos;
+	u64 transfert_length=0;
+	u32 start_offset=0;
+	GF_ROUTELCTChannel *rlct=NULL;
+	GF_LCTObject *gather_object=NULL;
+	u32 /*SBN,*/ESI; //Source Block Length  | Encoding Symbol
 
 	routedmx->nb_packets++;
 	routedmx->total_bytes_recv += nb_read;
@@ -3561,6 +3593,47 @@ GF_Err gf_route_dmx_process(GF_ROUTEDmx *routedmx)
 {
 	u32 i, j, count, nb_obj=0;
 	GF_Err e;
+
+#ifdef GPAC_HAS_ROUTE_AMT
+	if (routedmx->amt_gw) {
+		Bool amt_got_data = GF_FALSE;
+		for (;;) {
+			struct sockaddr_storage from_ss, to_ss;
+			socklen_t from_len = sizeof(from_ss), to_len = sizeof(to_ss);
+			int ttl = 0;
+			ssize_t len = amt_gateway_recv(routedmx->amt_gw,
+				&from_ss, &from_len, &to_ss, &to_len,
+				&ttl, routedmx->buffer, routedmx->buffer_size);
+			if (len < 0) break;  /* EAGAIN or error — socket drained */
+			if (len == 0) continue; /* control-plane only */
+			/* match to_ss to a known service by dst_ip:port */
+			char to_ip[64] = "";
+			u32 to_port = 0;
+			if (to_ss.ss_family == AF_INET) {
+				struct sockaddr_in *sin = (struct sockaddr_in *)&to_ss;
+				inet_ntop(AF_INET, &sin->sin_addr, to_ip, sizeof(to_ip));
+				to_port = ntohs(sin->sin_port);
+			}
+			count = gf_list_count(routedmx->services);
+			for (i = 0; i < count; i++) {
+				GF_ROUTEService *s = (GF_ROUTEService *)gf_list_get(routedmx->services, i);
+				if (s->tune_mode == GF_ROUTE_TUNE_OFF) continue;
+				if (s->port != to_port) continue;
+				if (s->dst_ip && strcmp(s->dst_ip, to_ip)) continue;
+				if (s->protocol == GF_SERVICE_ROUTE)
+					dmx_process_service_route_lct(routedmx, s, (u32)len);
+				else
+					dmx_process_service_dvb_flute_lct(routedmx, s, (u32)len);
+				amt_got_data = GF_TRUE;
+				break;
+			}
+		}
+		/* drive membership refresh */
+		if (amt_gateway_next_timeout_ms(routedmx->amt_gw) <= 0)
+			amt_gateway_timeout(routedmx->amt_gw);
+		return amt_got_data ? GF_OK : GF_IP_NETWORK_EMPTY;
+	}
+#endif
 
 	//check all active sockets
 	e = gf_sk_group_select(routedmx->active_sockets, 10, GF_SK_SELECT_READ);
@@ -3977,6 +4050,82 @@ void gf_route_dmx_reset_stats(GF_ROUTEDmx *routedmx)
 		routedmx->nb_packets = 0;
 		routedmx->total_bytes_recv = 0;
 	}
+}
+
+GF_EXPORT
+GF_Err gf_route_dmx_set_amt_relay(GF_ROUTEDmx *routedmx, const char *relay_host, u32 relay_port,
+                                    const char *group_ip, u32 group_port,
+                                    const char *source_ip)
+{
+#ifdef GPAC_HAS_ROUTE_AMT
+	if (!routedmx || !relay_host || !group_ip) return GF_BAD_PARAM;
+	if (routedmx->amt_gw) {
+		amt_gateway_close(routedmx->amt_gw);
+		routedmx->amt_gw = NULL;
+	}
+
+	struct sockaddr_storage relay_ss, group_ss, source_ss;
+	memset(&relay_ss, 0, sizeof(relay_ss));
+	memset(&group_ss, 0, sizeof(group_ss));
+	memset(&source_ss, 0, sizeof(source_ss));
+
+	struct addrinfo hints, *res;
+	char port_str[16];
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_DGRAM;
+	hints.ai_flags = AI_NUMERICSERV;
+
+	snprintf(port_str, sizeof(port_str), "%u", relay_port ? relay_port : 2268);
+	if (getaddrinfo(relay_host, port_str, &hints, &res) != 0 || !res) {
+		GF_LOG(GF_LOG_ERROR, GF_LOG_ROUTE, ("[ROUTE/AMT] Failed to resolve relay host %s\n", relay_host));
+		return GF_IP_ADDRESS_NOT_FOUND;
+	}
+	memcpy(&relay_ss, res->ai_addr, res->ai_addrlen);
+	socklen_t relay_len = (socklen_t)res->ai_addrlen;
+	freeaddrinfo(res);
+
+	snprintf(port_str, sizeof(port_str), "%u", group_port);
+	if (getaddrinfo(group_ip, port_str, &hints, &res) != 0 || !res) {
+		GF_LOG(GF_LOG_ERROR, GF_LOG_ROUTE, ("[ROUTE/AMT] Failed to resolve group address %s\n", group_ip));
+		return GF_IP_ADDRESS_NOT_FOUND;
+	}
+	memcpy(&group_ss, res->ai_addr, res->ai_addrlen);
+	socklen_t group_len = (socklen_t)res->ai_addrlen;
+	freeaddrinfo(res);
+
+	socklen_t source_len = 0;
+	int ssm = 0;
+	if (source_ip) {
+		if (getaddrinfo(source_ip, NULL, &hints, &res) != 0 || !res) {
+			GF_LOG(GF_LOG_ERROR, GF_LOG_ROUTE, ("[ROUTE/AMT] Failed to resolve SSM source address %s\n", source_ip));
+			return GF_IP_ADDRESS_NOT_FOUND;
+		}
+		memcpy(&source_ss, res->ai_addr, res->ai_addrlen);
+		source_len = (socklen_t)res->ai_addrlen;
+		freeaddrinfo(res);
+		ssm = 1;
+	}
+
+	GF_LOG(GF_LOG_INFO, GF_LOG_ROUTE, ("[ROUTE/AMT] Opening AMT gateway to relay %s:%u for group %s:%u%s%s\n",
+		relay_host, relay_port ? relay_port : 2268, group_ip, group_port,
+		source_ip ? " source=" : "", source_ip ? source_ip : ""));
+
+	routedmx->amt_gw = amt_gateway_open(
+		(struct sockaddr *)&relay_ss, relay_len,
+		(struct sockaddr *)&group_ss, group_len,
+		ssm ? (struct sockaddr *)&source_ss : NULL, source_len,
+		ssm, 5000, 3);
+	if (!routedmx->amt_gw) {
+		GF_LOG(GF_LOG_ERROR, GF_LOG_ROUTE, ("[ROUTE/AMT] amt_gateway_open() failed\n"));
+		return GF_IO_ERR;
+	}
+	return GF_OK;
+#else
+	GF_LOG(GF_LOG_ERROR, GF_LOG_ROUTE, ("[ROUTE/AMT] GPAC was not compiled with AMT support (GPAC_HAS_ROUTE_AMT)\n"));
+	return GF_NOT_SUPPORTED;
+#endif
 }
 
 GF_EXPORT

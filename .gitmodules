@@ -3,3 +3,6 @@
 	url = https://github.com/gpac/testsuite.git
 	branch = master
 	ignore = dirty
+[submodule "libamt"]
+	path = libamt
+	url = git@forge.uclouvain.be:inl/multicast-quic/libamt.git

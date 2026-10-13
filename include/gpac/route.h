@@ -385,6 +385,22 @@ u64 gf_route_dmx_get_recv_bytes(GF_ROUTEDmx *routedmx);
  */
 void gf_route_dmx_reset_stats(GF_ROUTEDmx *routedmx);
 
+/*! Open an AMT (Automatic Multicast Tunneling, RFC 7450) gateway tunnel so that
+ multicast traffic can be received over a network path that does not carry native
+ multicast.  Once set, gf_route_dmx_process() drains the AMT gateway instead of
+ reading from the native multicast sockets.
+\param routedmx the ROUTE demultiplexer
+\param relay_host AMT relay host name or dotted-decimal IPv4 address
+\param relay_port AMT relay UDP port (0 = default 2268)
+\param group_ip multicast group address (must match the demuxer's configured address)
+\param group_port multicast group UDP port
+\param source_ip optional SSM source address; NULL for ASM
+\return error code
+ */
+GF_Err gf_route_dmx_set_amt_relay(GF_ROUTEDmx *routedmx, const char *relay_host, u32 relay_port,
+                                    const char *group_ip, u32 group_port,
+                                    const char *source_ip);
+
 /*! Gather only objects with given TSI (for debug purposes)
 \param routedmx the ROUTE demultiplexer
 \param tsi the target TSI, 0 for no filtering

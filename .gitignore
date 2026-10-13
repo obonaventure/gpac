@@ -94,6 +94,7 @@ tests/results/
 tests/hash_refs/
 
 src/modules/**/*.dep
+src/libamt/
 *doxygen_warnings.txt
 */nodejs/node_modules/
 */nodejs/package-lock.json
